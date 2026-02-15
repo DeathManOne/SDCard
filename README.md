@@ -4,13 +4,14 @@
 ```c++
 #include <SDcard.h>
 SDCard *_SD_CARD;
+int _SD_CARD_PIN = 7;
 
 void setup() {
   SPI.begin();
   _SD_CARD = new SDCard();
 
   bool sdEnable = false;
-  do { sdEnable = _SD_CARD->initialize(SD_CARD_PIN, SPI); }
+  do { sdEnable = _SD_CARD->initialize(_SD_CARD_PIN, SPI); }
   while (!sdEnable);
 }
 ```
