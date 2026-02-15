@@ -74,6 +74,8 @@ bool SDCard::fileRead(std::string filename, std::string &result) const {
     File file = this->_SD->open(filename.c_str(), FILE_READ, false);
     if (!file)
         { return false; }
+
+    result = "";
     while (file.available())
         { result.append(file.readString().c_str()); }
 
@@ -134,3 +136,4 @@ bool SDCard::fileDelete(std::string filename) const {
         { return true; }
     return this->_SD->remove(filename.c_str());
 }
+
