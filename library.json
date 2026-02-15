@@ -1,0 +1,14 @@
+{
+  "name": "SDCard",
+  "version": "1.0.0",
+  "license": "Unlicense",
+  "keywords": "sd, esp, spi",
+  "description": "Read and write on a SD card with your ESP32. Work with SPI ",
+  "repository":
+  {
+    "type": "git",
+    "url": "https://github.com/DeathManOne/SDCard.git"
+  },
+  "frameworks": "arduino",
+  "platforms": ["espressif32"]
+}
