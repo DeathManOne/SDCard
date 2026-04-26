@@ -28,7 +28,7 @@ class SDCard {
          * @param SPI needed form SPI.h
          * @return true if initialised, otherwise false
          */
-        bool initialize(int SDA, SPIClass &SPI) const;
+        bool initialize(int SDA, SPIClass &SPI);
 
         /**
          * @brief get a list of files, if a directory is empty, it will not seen
