@@ -1,21 +1,89 @@
+/*
+ * SDCard.cpp
+ *
+ * Copyright (c) 2026 DeathManOne
+ * https://github.com/DeathManOne
+ * 
+ * This file is part of the SDCard library.
+ *
+ * SDCard is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * SDCard is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with SDCard.
+ * If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #include "../include/SDCard.h"
 
 SDCard::SDCard() {
     this->_SD = new fs::SDFS(SD);
+    this->_INITIALIZED = new bool(false);
 }
 
 SDCard::~SDCard() {
-    this->_SD->end();
+    if (*this->_INITIALIZED)
+        { this->_SD->end(); }
     delete this->_SD;
+    delete this->_INITIALIZED;
 }
 
-bool SDCard::initialize(int SDA, SPIClass &SPI) {
-    return this->_SD->begin(SDA, SPI);
+bool SDCard::cardInfos(uint8_t &type, uint64_t &size, uint64_t &totalBytes, uint64_t &usedBytes) const {
+    if (!*this->_INITIALIZED)
+        { return false; }
+    type = this->_SD->cardType();
+    size = this->_SD->cardSize();
+    totalBytes = this->_SD->totalBytes();
+    usedBytes = this->_SD->usedBytes();
+
+    return type != CARD_NONE;
 }
 
-std::map<std::string, size_t> SDCard::dirList(std::string dirname, int maxLevel) const {
-    if (dirname.empty() || dirname[0] != '/')
-        { dirname = "/" + dirname; }
+std::string SDCard::_normalizePath(std::string path) {
+    if (path.empty() || path[0] != '/')
+        { path = "/" + path; }
+    return path;
+}
+
+std::string SDCard::_joinPath(const std::string &dirname, const char *name) {
+    if (dirname == "/")
+        { return "/" + std::string(name); }
+    return dirname + "/" + std::string(name);
+}
+
+bool SDCard::_ensureParentDirs(const std::string &path) {
+    if (path.empty())
+        { return false; }
+    std::string normalized = this->_normalizePath(path);
+    size_t pos = 1;
+
+    while ((pos = normalized.find('/', pos)) != std::string::npos) {
+        std::string dir = normalized.substr(0, pos);
+        if (!dir.empty() && !this->_SD->exists(dir.c_str())) {
+            if (!this->_SD->mkdir(dir.c_str()))
+                { return false; }
+        }
+        ++pos;
+    }
+    return true;
+}
+
+bool SDCard::initialize(SPIClass &spi, int cs) {
+    *this->_INITIALIZED = this->_SD->begin(cs, spi);
+    return *this->_INITIALIZED;
+}
+
+std::map<std::string, size_t> SDCard::dirList(std::string dirname, int maxLevel, bool includeDirectories) {
+    if (!this->isInitialized())
+        { return {}; }
+    dirname = this->_normalizePath(dirname);
 
     std::map<std::string, size_t> tmp = {};
     File dirOrFile = this->_SD->open(dirname.c_str());
@@ -28,117 +96,20 @@ std::map<std::string, size_t> SDCard::dirList(std::string dirname, int maxLevel)
 
     File file = dirOrFile.openNextFile();
     while (file) {
+        std::string path = this->_joinPath(dirname, file.name());
         if (file.isDirectory()) {
-            if (maxLevel <= 0) {
-                file = dirOrFile.openNextFile();
-                continue;
+            if (includeDirectories)
+                { tmp.insert({path, 0}); }
+            if (maxLevel > 0) {
+                std::map<std::string, size_t> subDir =
+                    this->dirList(path, maxLevel - 1, includeDirectories);
+                for (const auto& dir : subDir)
+                    { tmp.insert({dir.first, dir.second}); }
             }
-            std::map<std::string, size_t> subDir =
-                this->dirList(dirname + "/" + file.name(), maxLevel - 1);
-            for (const auto& dir : subDir)
-                { tmp.insert({dir.first, dir.second}); }
-        } else { tmp.insert({dirname + "/" + file.name(), file.size()}); }
+        } else { tmp.insert({path, file.size()}); }
         file.close();
         file = dirOrFile.openNextFile();
     }
     dirOrFile.close();
     return tmp;
-}
-
-bool SDCard::dirOrFileExist(std::string dirnameOrFilename) const {
-    if (dirnameOrFilename.empty() || dirnameOrFilename[0] != '/')
-        { dirnameOrFilename = "/" + dirnameOrFilename; }
-
-    return this->_SD->exists(dirnameOrFilename.c_str());
-}
-
-bool SDCard::dirCreate(std::string dirname) const {
-    if (dirname.c_str()[0] != '/')
-        { dirname = "/" + dirname; }
-    if (this->_SD->exists(dirname.c_str()))
-        { return true; }
-
-    return this->_SD->mkdir(dirname.c_str());
-}
-
-bool SDCard::dirRemove(std::string dirname) const {
-    if (dirname.c_str()[0] != '/')
-        { dirname = "/" + dirname; }
-    if (!this->_SD->exists(dirname.c_str()))
-        { return true; }
-
-    return this->_SD->rmdir(dirname.c_str());
-}
-
-bool SDCard::fileRead(std::string filename, std::string &result) const {
-    if (filename.c_str()[0] != '/')
-        { filename = "/" + filename; }
-    if (!this->_SD->exists(filename.c_str()))
-        { return false; }
-
-    File file = this->_SD->open(filename.c_str(), FILE_READ, false);
-    if (!file)
-        { return false; }
-
-    result = "";
-    while (file.available())
-        { result += static_cast<char>(file.read()); }
-
-    file.close();
-    return true;
-}
-
-bool SDCard::fileWriteOrAppend(std::string filename, std::string message) const {
-    if (filename.c_str()[0] != '/')
-        { filename = "/" + filename; }
-
-    File file;
-    if (this->_SD->exists(filename.c_str()))
-        { file = this->_SD->open(filename.c_str(), FILE_APPEND, false); }
-    else { file = this->_SD->open(filename.c_str(), FILE_WRITE, true); }
-
-    if (!file)
-        { return false; }
-    std::string msg = message + "\n";
-    size_t written = file.print(msg.c_str());
-    file.close();
-
-    return written != 0;
-}
-
-bool SDCard::fileErase(std::string filename) const {
-    if (filename.c_str()[0] != '/')
-        { filename = "/" + filename; }
-    if (!this->_SD->exists(filename.c_str()))
-        { return false; }
-    if (!this->fileDelete(filename))
-        { return false; }
-
-    File file = this->_SD->open(filename.c_str(), FILE_WRITE, false);
-    if (file) {
-        file.close();
-        return true;
-    } else { return false; }
-}
-
-bool SDCard::fileRename(std::string fromFilename, std::string toFilename) const {
-    if (fromFilename.c_str()[0] != '/')
-        { fromFilename = "/" + fromFilename; }
-    if (toFilename.c_str()[0] != '/')
-        { toFilename = "/" + toFilename; }
-
-    if (!this->_SD->exists(fromFilename.c_str()))
-        { return false; }
-    if (this->_SD->exists(toFilename.c_str()))
-        { return false; }
-
-    return this->_SD->rename(fromFilename.c_str(), toFilename.c_str());
-}
-
-bool SDCard::fileDelete(std::string filename) const {
-    if (filename.c_str()[0] != '/')
-        { filename = "/" + filename; }
-    if (!this->_SD->exists(filename.c_str()))
-        { return true; }
-    return this->_SD->remove(filename.c_str());
 }

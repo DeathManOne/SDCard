@@ -1,113 +1,263 @@
-
 # SDCard for ESP32
-## Initialization
-```c++
-#include <SDcard.h>
+Simple and complete SD card management library for ESP32 using SPI.
+Compatible with Arduino framework and PlatformIO.
+
+---
+## Features
+* Initialize SD card with SPI
+* Read and write files
+* Append data in existing files
+* Automatically create parent directories
+* Copy, rename and delete files
+* Read files line by line
+* List directories recursively
+* Create and remove directories
+* Remove directories recursively
+* Retrieve SD card informations
+* Safe checks when SD card is not initialized
+
+---
+# Installation
+## PlatformIO
+Add in `platformio.ini`:
+```ini
+lib_deps =
+    https://github.com/DeathManOne/SDCard.git
+```
+## Arduino IDE
+Clone or download the repository into your `libraries` folder.
+
+---
+# Initialization
+```cpp
+#include <SPI.h>
+#include <SDCard.h>
+
 SDCard *_SD_CARD;
-int _SD_CARD_PIN = 7;
 
 void setup() {
-  SPI.begin();
-  _SD_CARD = new SDCard();
+    SPI.begin();
 
-  bool sdEnable = false;
-  do { sdEnable = _SD_CARD->initialize(_SD_CARD_PIN, SPI); }
-  while (!sdEnable);
+    _SD_CARD = new SDCard();
+
+    bool sdEnable = false;
+    do {
+        sdEnable = _SD_CARD->initialize(SPI, 5);
+    } while (!sdEnable);
 }
 ```
-
-## Delete
-```c++
+## Delete object
+```cpp
 delete _SD_CARD;
 ```
 
-## Commands
-### -> Both files and directories <-
-#### Check existing file or directory
-```c++
-std::string toCheck= "/path/to/myFile.txt";
-//std::string toCheck = "/myDirectory";
+---
+# Methods
 
-if (_SD_CARD->dirOrFileExist(toCheck))
-  { Serial.println("File or directory exist"); }
-else { Serial.println("File or directory does not exist"); }
+---
+# SD card informations
+## Check initialization
+```cpp
+if (_SD_CARD->isInitialized())
+    { Serial.println("SD card initialized"); }
+else { Serial.println("SD card not initialized"); }
+```
+## Get SD card informations
+```cpp
+uint8_t type;
+uint64_t size;
+uint64_t totalBytes;
+uint64_t usedBytes;
+
+if (_SD_CARD->cardInfos(type, size, totalBytes, usedBytes)) {
+    Serial.printf("Type: %u\n", type);
+    Serial.printf("Size: %llu MB\n", size / 1024 / 1024);
+    Serial.printf("Total bytes: %llu\n", totalBytes);
+    Serial.printf("Used bytes: %llu\n", usedBytes);
+}
 ```
 
-### -> Directories <-
-#### Create new directory
-```c++
-std::string dirname = "/path/to/myNewDirectory";
+---
+# Directories
+## List files and directories
+```cpp
+std::map<std::string, size_t> files =
+    _SD_CARD->dirList("/", 4, true);
 
-if (_SD_CARD->dirCreate(dirname))
-  { Serial.println("Directory created"); }
-else { Serial.println("Directory not created"); }
-```
-
-#### Remove directory
-```c++
-std::string dirname = "/path/to/directoryToDelete";
-
-if (_SD_CARD->dirRemove(dirname))
-  { Serial.println("Directory deleted"); }
-else { Serial.println("Directory not deleted"); }
-```
-
-### -> Files <-
-#### List of files
-###### If a directory is empty (no file), it will not be seen
-```c++
-std::string myDir = "/"; // root
-int maxLevel = 4; // four sub-directories max
-
-std::map<std::string, size_t> files = SD_CARD->dirList(myDir, maxLevel);
 for (auto file : files)
-  { Serial.printf("%s (%d)\n", file.first.c_str(), file.second); }
+    { Serial.printf("%s (%u bytes)\n", file.first.c_str(), file.second); }
+```
+### Parameters
+| Parameter            | Description                         |
+| -------------------- | ----------------------------------- |
+| `dirname`            | Directory to explore                |
+| `maxLevel`           | Maximum recursive depth             |
+| `includeDirectories` | Include directories in returned map |
+
+---
+## Check if directory exists
+```cpp
+if (_SD_CARD->dirExists("/logs"))
+    { Serial.println("Directory exists"); }
 ```
 
-#### Read file
-```c++
-std::string filename = "/path/to/myFile.txt";
+---
+## Create directory
+Parent directories are automatically created.
+```cpp
+if (_SD_CARD->dirCreate("/logs/2026/may"))
+    { Serial.println("Directory created"); }
+```
+
+---
+## Remove empty directory
+```cpp
+if (_SD_CARD->dirRemove("/logs/old"))
+    { Serial.println("Directory removed"); }
+```
+
+---
+## Remove directory recursively
+```cpp
+if (_SD_CARD->dirRemoveRecursive("/logs"))
+    { Serial.println("Directory removed recursively"); }
+```
+
+---
+# Files
+## Check if file exists
+```cpp
+if (_SD_CARD->fileExists("/logs/data.txt"))
+    { Serial.println("File exists"); }
+```
+
+---
+## Get file size
+```cpp
+size_t size = _SD_CARD->fileSize("/logs/data.txt");
+
+Serial.printf("File size: %u bytes\n", size);
+```
+
+---
+## Read file
+```cpp
 std::string result;
 
-if (_SD_CARD->read(filename, result))
-  { Serial.printf("File: %s\nData:\n%s\n", filename.c_str(), result.c_str()); }
-else { Serial.println("File not read"); }
+if (_SD_CARD->fileRead("/logs/data.txt", result))
+    { Serial.printf("%s\n", result.c_str()); }
 ```
 
-#### Create new file and write / append in existing file
-```c++
-std::string filename = "/path/to/myFile.txt";
-std::string data = "Hello world, from ESP32";
+---
+## Read file line by line
+```cpp
+std::vector<std::string> lines;
 
-if (_SD_CARD->fileWriteOrAppend(filename, data))
-  { Serial.println("Written"); }
-else { Serial.println("Not written"); }
+if (_SD_CARD->fileReadLines("/logs/data.txt", lines)) {
+    for (const std::string &line : lines)
+        { Serial.println(line.c_str()); }
+}
 ```
 
-#### Erase all datas in file
-```c++
-std::string filename = "/path/to/myFile.txt";
+---
+## Write file
+Create or overwrite a file.
+```cpp
+if (_SD_CARD->fileWrite("/logs/data.txt", "Hello world"))
+    { Serial.println("File written"); }
+```
+Parent directories are automatically created.
 
-if (_SD_CARD->fileErase(filename))
-  { Serial.println("File erased"); }
-else { Serial.println("File not erased"); }
+---
+## Append in existing file
+```cpp
+if (_SD_CARD->fileAppend("/logs/data.txt", "New line"))
+    { Serial.println("Data appended"); }
 ```
 
-#### Rename file
-```c++
-std::string fromFilename= "/path/to/myOldFile.txt";
-std::string toFilename= "/path/to/myNewFile.txt";
-
-if (_SD_CARD->fileRename(fromFilename, toFilename))
-  { Serial.println("File renamed"); }
-else { Serial.println("File not renamed"); }
+---
+## Write or append
+* Create file if it does not exist
+* Append data if file already exists
+```cpp
+if (_SD_CARD->fileWriteOrAppend("/logs/data.txt", "Hello"))
+    { Serial.println("Written or appended"); }
 ```
 
-#### Delete file
-```c++
-std::string filename= "/path/to/fileToDelete.txt";
-
-if (_SD_CARD->fileDelete(filename))
-  { Serial.println("File deleted"); }
-else { Serial.println("File not deleted"); }
+---
+## Copy file
+```cpp
+if (_SD_CARD->fileCopy("/logs/data.txt", "/backup/data.txt"))
+    { Serial.println("File copied"); }
 ```
+
+Parent directories are automatically created.
+
+---
+## Erase file content
+File stays existing but becomes empty.
+```cpp
+if (_SD_CARD->fileErase("/logs/data.txt"))
+    { Serial.println("File erased"); }
+```
+
+---
+## Rename or move file
+```cpp
+if (_SD_CARD->fileRename("/logs/data.txt", "/backup/data.txt"))
+    { Serial.println("File renamed or moved"); }
+```
+Parent directories are automatically created.
+
+---
+## Delete file
+```cpp
+if (_SD_CARD->fileDelete("/logs/data.txt"))
+    { Serial.println("File deleted"); }
+```
+
+---
+# Notes
+* All paths are automatically normalized.
+* Missing leading `/` is automatically added.
+* Most methods safely return `false` if SD card is not initialized.
+* Written messages automatically add a newline (`\n`).
+
+---
+# Example
+```cpp
+#include <Arduino.h>
+#include <SPI.h>
+#include <SDCard.h>
+
+SDCard sd;
+
+void setup() {
+    Serial.begin(115200);
+
+    SPI.begin();
+
+    if (!sd.initialize(SPI, 5)) {
+        Serial.println("SD initialization failed");
+        return;
+    }
+
+    sd.fileWriteOrAppend("/logs/boot.txt", "ESP32 started");
+
+    std::string result;
+    if (sd.fileRead("/logs/boot.txt", result))
+        { Serial.println(result.c_str()); }
+}
+
+void loop() {
+}
+```
+
+---
+# License
+This project is licensed under the GNU GPL v3 or later.
+See:
+```text
+LICENSE
+```
+for full license information.
