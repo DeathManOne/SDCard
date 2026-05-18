@@ -23,32 +23,37 @@
 
 #include "../include/SDCard.h"
 
-SDCard::SDCard() {
-    this->_SD = new fs::SDFS(SD);
-    this->_INITIALIZED = new bool(false);
-}
-
 SDCard::~SDCard() {
-    if (*this->_INITIALIZED)
-        { this->_SD->end(); }
-    delete this->_SD;
-    delete this->_INITIALIZED;
+    if (this->_INITIALIZED)
+        { this->_SD.end(); }
+    this->_INITIALIZED = false;
 }
 
-bool SDCard::cardInfos(uint8_t &type, uint64_t &size, uint64_t &totalBytes, uint64_t &usedBytes) const {
-    if (!*this->_INITIALIZED)
+bool SDCard::cardInfos(uint8_t &type, uint64_t &size, uint64_t &totalBytes, uint64_t &usedBytes) {
+    if (!this->_INITIALIZED)
         { return false; }
-    type = this->_SD->cardType();
-    size = this->_SD->cardSize();
-    totalBytes = this->_SD->totalBytes();
-    usedBytes = this->_SD->usedBytes();
+    type = this->_SD.cardType();
+    size = this->_SD.cardSize();
+    totalBytes = this->_SD.totalBytes();
+    usedBytes = this->_SD.usedBytes();
 
     return type != CARD_NONE;
 }
 
 std::string SDCard::_normalizePath(std::string path) {
-    if (path.empty() || path[0] != '/')
-        { path = "/" + path; }
+    if (path.empty())
+        { return "/"; }
+    if (path[0] != '/')
+        { path.insert(0, "/"); }
+
+    for (size_t i = 0; i + 1 < path.size();) {
+        if (path[i] == '/' && path[i + 1] == '/')
+            { path.erase(i, 1); }
+        else { ++i; }
+    }
+
+    while (path.size() > 1 && path.back() == '/')
+        { path.pop_back(); }
     return path;
 }
 
@@ -66,8 +71,8 @@ bool SDCard::_ensureParentDirs(const std::string &path) {
 
     while ((pos = normalized.find('/', pos)) != std::string::npos) {
         std::string dir = normalized.substr(0, pos);
-        if (!dir.empty() && !this->_SD->exists(dir.c_str())) {
-            if (!this->_SD->mkdir(dir.c_str()))
+        if (!dir.empty() && !this->_SD.exists(dir.c_str())) {
+            if (!this->_SD.mkdir(dir.c_str()))
                 { return false; }
         }
         ++pos;
@@ -76,8 +81,10 @@ bool SDCard::_ensureParentDirs(const std::string &path) {
 }
 
 bool SDCard::initialize(SPIClass &spi, int cs) {
-    *this->_INITIALIZED = this->_SD->begin(cs, spi);
-    return *this->_INITIALIZED;
+    if (this->_INITIALIZED)
+        { return true; }
+    this->_INITIALIZED = this->_SD.begin(cs, spi);
+    return this->_INITIALIZED;
 }
 
 std::map<std::string, size_t> SDCard::dirList(std::string dirname, int maxLevel, bool includeDirectories) {
@@ -86,7 +93,7 @@ std::map<std::string, size_t> SDCard::dirList(std::string dirname, int maxLevel,
     dirname = this->_normalizePath(dirname);
 
     std::map<std::string, size_t> tmp = {};
-    File dirOrFile = this->_SD->open(dirname.c_str());
+    File dirOrFile = this->_SD.open(dirname.c_str());
 
     if (!dirOrFile) { return tmp; }
     if (!dirOrFile.isDirectory()) {

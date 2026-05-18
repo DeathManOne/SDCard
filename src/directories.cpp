@@ -27,7 +27,7 @@ bool SDCard::dirExists(std::string dirname) {
     if (!this->isInitialized())
         { return false; }
     dirname = this->_normalizePath(dirname);
-    File file = this->_SD->open(dirname.c_str());
+    File file = this->_SD.open(dirname.c_str());
     if (!file)
         { return false; }
     bool result = file.isDirectory();
@@ -40,28 +40,34 @@ bool SDCard::dirCreate(std::string dirname) {
         { return false; }
     dirname = this->_normalizePath(dirname);
 
-    if (this->_SD->exists(dirname.c_str()))
-        { return true; }
+    if (this->_SD.exists(dirname.c_str()))
+        { return this->dirExists(dirname); }
     return this->_ensureParentDirs(dirname + "/");
 }
 
 bool SDCard::dirRemove(std::string dirname) {
     if (!this->isInitialized())
         { return false; }
+    if (dirname == "/")
+        { return false; }
     dirname = this->_normalizePath(dirname);
-    if (!this->_SD->exists(dirname.c_str()))
+
+    if (!this->_SD.exists(dirname.c_str()))
         { return true; }
-    return this->_SD->rmdir(dirname.c_str());
+    return this->_SD.rmdir(dirname.c_str());
 }
 
 bool SDCard::dirRemoveRecursive(std::string dirname) {
     if (!this->isInitialized())
         { return false; }
+    if (dirname == "/")
+        { return false; }
     dirname = this->_normalizePath(dirname);
 
-    File dir = this->_SD->open(dirname.c_str());
+    File dir = this->_SD.open(dirname.c_str());
     if (!dir || !dir.isDirectory()) {
-        if (dir) { dir.close(); }
+        if (dir)
+            { dir.close(); }
         return false;
     }
 
@@ -72,7 +78,7 @@ bool SDCard::dirRemoveRecursive(std::string dirname) {
 
         if (file.isDirectory())
             { ok = this->dirRemoveRecursive(path); }
-        else { ok = this->_SD->remove(path.c_str()); }
+        else { ok = this->_SD.remove(path.c_str()); }
 
         file.close();
         if (!ok) {
@@ -82,5 +88,5 @@ bool SDCard::dirRemoveRecursive(std::string dirname) {
         file = dir.openNextFile();
     }
     dir.close();
-    return this->_SD->rmdir(dirname.c_str());
+    return this->_SD.rmdir(dirname.c_str());
 }

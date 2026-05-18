@@ -1,6 +1,6 @@
 {
   "name": "SDCard",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "license": "GPL-3.0-or-later",
   "keywords": ["sd", "sdcard", "esp32", "spi", "filesystem", "storage", "arduino"],
   "description": "Complete SD card management library for ESP32 using SPI. Read, write, append, copy, move and manage files/directories with automatic parent directories creation.",

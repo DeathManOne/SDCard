@@ -31,8 +31,8 @@
 
 class SDCard {
     private:
-        fs::SDFS *_SD;
-        bool *_INITIALIZED;
+        bool _INITIALIZED = false;
+        fs::SDFS _SD = fs::SDFS(SD);
         std::string _normalizePath(std::string path);
         std::string _joinPath(const std::string &dirname, const char *name);
         bool _ensureParentDirs(const std::string &path);
@@ -40,7 +40,7 @@ class SDCard {
         /**
          * @brief constructor
          */
-        SDCard();
+        SDCard() {}
 
         /**
          * @brief disable copy constructor
@@ -61,7 +61,7 @@ class SDCard {
          * @brief check if SD card is initialized
          * @return true if initialized, otherwise false
          */
-        inline bool isInitialized() const { return *this->_INITIALIZED; }
+        inline bool isInitialized() const { return this->_INITIALIZED; }
 
         /**
          * @brief get informations about SD card
@@ -71,7 +71,7 @@ class SDCard {
          * @param usedBytes [out] used bytes
          * @return true if card detected, otherwise false
          */
-        bool cardInfos(uint8_t &type, uint64_t &size, uint64_t &totalBytes, uint64_t &usedBytes) const;
+        bool cardInfos(uint8_t &type, uint64_t &size, uint64_t &totalBytes, uint64_t &usedBytes);
 
         /**
          * @brief initialise class, SPI must already be began

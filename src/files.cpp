@@ -28,7 +28,7 @@ bool SDCard::fileExists(std::string filename) {
         { return false; }
     filename = this->_normalizePath(filename);
 
-    File file = this->_SD->open(filename.c_str());
+    File file = this->_SD.open(filename.c_str());
     if (!file)
         { return false; }
     bool result = !file.isDirectory();
@@ -41,7 +41,7 @@ size_t SDCard::fileSize(std::string filename) {
         { return 0; }
     filename = this->_normalizePath(filename);
 
-    File file = this->_SD->open(filename.c_str(), FILE_READ, false);
+    File file = this->_SD.open(filename.c_str(), FILE_READ, false);
     if (!file || file.isDirectory()) {
         if (file)
             { file.close(); }
@@ -57,9 +57,9 @@ bool SDCard::fileRead(std::string filename, std::string &result) {
         { return false; }
     filename = this->_normalizePath(filename);
 
-    if (!this->_SD->exists(filename.c_str()))
+    if (!this->_SD.exists(filename.c_str()))
         { return false; }
-    File file = this->_SD->open(filename.c_str(), FILE_READ, false);
+    File file = this->_SD.open(filename.c_str(), FILE_READ, false);
 
     if (!file || file.isDirectory()) {
         if (file)
@@ -108,10 +108,10 @@ bool SDCard::fileWrite(std::string filename, std::string message) {
 
     if (!this->_ensureParentDirs(filename))
         { return false; }
-    if (this->_SD->exists(filename.c_str()) && !this->_SD->remove(filename.c_str()))
+    if (this->_SD.exists(filename.c_str()) && !this->_SD.remove(filename.c_str()))
         { return false; }
 
-    File file = this->_SD->open(filename.c_str(), FILE_WRITE, true);
+    File file = this->_SD.open(filename.c_str(), FILE_WRITE, true);
     if (!file || file.isDirectory()) {
         if (file)
             { file.close(); }
@@ -130,10 +130,10 @@ bool SDCard::fileAppend(std::string filename, std::string message) {
 
     if (!this->_ensureParentDirs(filename))
         { return false; }
-    if (!this->_SD->exists(filename.c_str()))
+    if (!this->_SD.exists(filename.c_str()))
         { return false; }
 
-    File file = this->_SD->open(filename.c_str(), FILE_APPEND, false);
+    File file = this->_SD.open(filename.c_str(), FILE_APPEND, false);
     if (!file || file.isDirectory()) {
         if (file)
             { file.close(); }
@@ -156,9 +156,9 @@ bool SDCard::fileWriteOrAppend(std::string filename, std::string message) {
         { return false; }
 
     File file;
-    if (this->_SD->exists(filename.c_str()))
-        { file = this->_SD->open(filename.c_str(), FILE_APPEND, false); }
-    else { file = this->_SD->open(filename.c_str(), FILE_WRITE, true); }
+    if (this->_SD.exists(filename.c_str()))
+        { file = this->_SD.open(filename.c_str(), FILE_APPEND, false); }
+    else { file = this->_SD.open(filename.c_str(), FILE_WRITE, true); }
 
     if (!file || file.isDirectory()) {
         if (file)
@@ -176,13 +176,15 @@ bool SDCard::fileCopy(std::string fromFilename, std::string toFilename) {
     fromFilename = this->_normalizePath(fromFilename);
     toFilename = this->_normalizePath(toFilename);
 
-    if (!this->fileExists(fromFilename) || this->_SD->exists(toFilename.c_str()))
+    if (fromFilename == toFilename)
+        { return false; }
+    if (!this->fileExists(fromFilename) || this->_SD.exists(toFilename.c_str()))
         { return false; }
     if (!this->_ensureParentDirs(toFilename))
         { return false; }
 
-    File src = this->_SD->open(fromFilename.c_str(), FILE_READ, false);
-    File dst = this->_SD->open(toFilename.c_str(), FILE_WRITE, true);
+    File src = this->_SD.open(fromFilename.c_str(), FILE_READ, false);
+    File dst = this->_SD.open(toFilename.c_str(), FILE_WRITE, true);
     if (!src || !dst || src.isDirectory() || dst.isDirectory()) {
         if (src) { src.close(); }
         if (dst) { dst.close(); }
@@ -195,7 +197,7 @@ bool SDCard::fileCopy(std::string fromFilename, std::string toFilename) {
         if (dst.write(buffer, len) != len) {
             src.close();
             dst.close();
-            this->_SD->remove(toFilename.c_str());
+            this->_SD.remove(toFilename.c_str());
             return false;
         }
     }
@@ -209,12 +211,12 @@ bool SDCard::fileErase(std::string filename) {
         { return false; }
     filename = this->_normalizePath(filename);
 
-    if (!this->_SD->exists(filename.c_str()))
+    if (!this->_SD.exists(filename.c_str()))
         { return false; }
     if (!this->fileDelete(filename))
         { return false; }
 
-    File file = this->_SD->open(filename.c_str(), FILE_WRITE, true);
+    File file = this->_SD.open(filename.c_str(), FILE_WRITE, true);
     if (file) {
         file.close();
         return true;
@@ -227,20 +229,20 @@ bool SDCard::fileRename(std::string fromFilename, std::string toFilename) {
     fromFilename = this->_normalizePath(fromFilename);
     toFilename = this->_normalizePath(toFilename);
 
-    if (!this->_SD->exists(fromFilename.c_str()))
+    if (!this->_SD.exists(fromFilename.c_str()))
         { return false; }
-    if (this->_SD->exists(toFilename.c_str()))
+    if (this->_SD.exists(toFilename.c_str()))
         { return false; }
     if (!this->_ensureParentDirs(toFilename))
         { return false; }
-    return this->_SD->rename(fromFilename.c_str(), toFilename.c_str());
+    return this->_SD.rename(fromFilename.c_str(), toFilename.c_str());
 }
 
 bool SDCard::fileDelete(std::string filename) {
     if (!this->isInitialized())
         { return false; }
     filename = this->_normalizePath(filename);
-    if (!this->_SD->exists(filename.c_str()))
+    if (!this->_SD.exists(filename.c_str()))
         { return true; }
-    return this->_SD->remove(filename.c_str());
+    return this->_SD.remove(filename.c_str());
 }
