@@ -1,230 +1,465 @@
 # SDCard for ESP32
-Simple and complete SD card management library for ESP32 using SPI.
-Compatible with Arduino framework and PlatformIO.
+
+## Complete Documentation (v2.0.0)
+
+This library provides complete SD card management for ESP32 using SPI with a focus on:
+- Zero STL in public API
+- No dynamic memory allocation
+- Fixed-size buffers
+- Callback-based reading
+- Automatic parent directory creation
 
 ---
-## Features
-* Initialize SD card with SPI
-* Read and write files
-* Append data in existing files
-* Automatically create parent directories
-* Copy, rename and delete files
-* Read files line by line
-* List directories recursively
-* Create and remove directories
-* Remove directories recursively
-* Retrieve SD card informations
-* Safe checks when SD card is not initialized
+
+# Table of Contents
+
+1. Introduction
+2. Features
+3. Installation
+4. Quick Start
+5. SD Card Management
+6. Directory Management
+7. File Information
+8. File Reading
+9. Text Writing
+10. Binary Writing
+11. File Management
+12. Callbacks
+13. Constants
+14. Path Normalization
+15. Return Values
+16. Migration from 1.x
+17. Complete Example
+18. License
 
 ---
+
+# Introduction
+
+SDCard is a lightweight SD card library for ESP32 using SPI.
+
+Unlike many filesystem wrappers, version 2.0.0 removes STL containers from the public API and relies on callbacks and fixed buffers to provide predictable memory usage suitable for embedded systems.
+
+---
+
+# Features
+
+- SD card initialization
+- Card information retrieval
+- Recursive directory listing
+- Recursive directory deletion
+- Text file reading and writing
+- Binary file reading and writing
+- File copy, rename and delete
+- Automatic parent directory creation
+- Callback-based streaming
+- Fixed-size buffers
+- No heap allocations in normal operation
+
+---
+
 # Installation
+
 ## PlatformIO
-Add in `platformio.ini`:
+
 ```ini
 lib_deps =
     https://github.com/DeathManOne/SDCard.git
 ```
+
 ## Arduino IDE
-Clone or download the repository into your `libraries` folder.
+
+Install the library inside the Arduino libraries directory.
 
 ---
-# Initialization
+
+# Quick Start
+
 ```cpp
 #include <SPI.h>
 #include <SDCard.h>
 
-SDCard *_SD_CARD;
+SDCard sd;
 
 void setup() {
     SPI.begin();
 
-    _SD_CARD = new SDCard();
+    if (!sd.initialize(SPI, 5)) {
+        return;
+    }
 
-    bool sdEnable = false;
-    do {
-        sdEnable = _SD_CARD->initialize(SPI, 5);
-    } while (!sdEnable);
-}
-```
-## Delete object
-```cpp
-delete _SD_CARD;
-```
-
----
-# Methods
-
----
-# SD card informations
-## Check initialization
-```cpp
-if (_SD_CARD->isInitialized())
-    { Serial.println("SD card initialized"); }
-else { Serial.println("SD card not initialized"); }
-```
-## Get SD card informations
-```cpp
-uint8_t type;
-uint64_t size;
-uint64_t totalBytes;
-uint64_t usedBytes;
-
-if (_SD_CARD->cardInfos(type, size, totalBytes, usedBytes)) {
-    Serial.printf("Type: %u\n", type);
-    Serial.printf("Size: %llu MB\n", size / 1024 / 1024);
-    Serial.printf("Total bytes: %llu\n", totalBytes);
-    Serial.printf("Used bytes: %llu\n", usedBytes);
+    sd.fileWrite("/hello.txt", "Hello World");
 }
 ```
 
 ---
-# Directories
-## List files and directories
-```cpp
-std::map<std::string, size_t> files =
-    _SD_CARD->dirList("/", 4, true);
 
-for (auto file : files)
-    { Serial.printf("%s (%u bytes)\n", file.first.c_str(), file.second); }
-```
-### Parameters
-| Parameter            | Description                         |
-| -------------------- | ----------------------------------- |
-| `dirname`            | Directory to explore                |
-| `maxLevel`           | Maximum recursive depth             |
-| `includeDirectories` | Include directories in returned map |
+# SD Card Management
 
----
-## Check if directory exists
+## initialize()
+
+Initializes the SD card.
+
 ```cpp
-if (_SD_CARD->dirExists("/logs"))
-    { Serial.println("Directory exists"); }
+bool initialize(SPIClass &spi, int cs);
 ```
 
----
-## Create directory
-Parent directories are automatically created.
+## isInitialized()
+
 ```cpp
-if (_SD_CARD->dirCreate("/logs/2026/may"))
-    { Serial.println("Directory created"); }
+bool isInitialized() const;
+```
+
+## cardInfos()
+
+```cpp
+bool cardInfos(
+    uint8_t &type,
+    uint64_t &size,
+    uint64_t &totalBytes,
+    uint64_t &usedBytes
+);
 ```
 
 ---
-## Remove empty directory
+
+# Directory Management
+
+## dirExists()
+
 ```cpp
-if (_SD_CARD->dirRemove("/logs/old"))
-    { Serial.println("Directory removed"); }
+bool dirExists(const char *dirname);
+```
+
+## dirCreate()
+
+Creates a directory and missing parents.
+
+```cpp
+bool dirCreate(const char *dirname);
+```
+
+## dirRemove()
+
+Removes an empty directory.
+
+```cpp
+bool dirRemove(const char *dirname);
+```
+
+## dirRemoveRecursive()
+
+Removes a directory and all contents.
+
+```cpp
+bool dirRemoveRecursive(const char *dirname);
+```
+
+## dirList()
+
+```cpp
+bool dirList(
+    const char *dirname,
+    int maxLevel,
+    bool includeDirectories,
+    DirListCallback callback,
+    void *userData = nullptr
+);
+```
+
+Example:
+
+```cpp
+bool callback(
+    const char *path,
+    size_t size,
+    bool isDirectory,
+    void *userData
+) {
+    return true;
+}
+
+sd.dirList("/", 4, true, callback);
 ```
 
 ---
-## Remove directory recursively
+
+# File Information
+
+## fileExists()
+
 ```cpp
-if (_SD_CARD->dirRemoveRecursive("/logs"))
-    { Serial.println("Directory removed recursively"); }
+bool fileExists(const char *filename);
+```
+
+## fileSize()
+
+```cpp
+size_t fileSize(const char *filename);
 ```
 
 ---
-# Files
-## Check if file exists
+
+# File Reading
+
+## fileRead()
+
+Reads a file by chunks.
+
 ```cpp
-if (_SD_CARD->fileExists("/logs/data.txt"))
-    { Serial.println("File exists"); }
+bool fileRead(
+    const char *filename,
+    FileReadCallback callback,
+    void *userData = nullptr
+);
 ```
 
----
-## Get file size
-```cpp
-size_t size = _SD_CARD->fileSize("/logs/data.txt");
+Example:
 
-Serial.printf("File size: %u bytes\n", size);
+```cpp
+bool callback(
+    const uint8_t *buffer,
+    size_t length,
+    void *userData
+) {
+    Serial.write(buffer, length);
+    return true;
+}
 ```
 
----
-## Read file
-```cpp
-std::string result;
+Returning false stops reading.
 
-if (_SD_CARD->fileRead("/logs/data.txt", result))
-    { Serial.printf("%s\n", result.c_str()); }
+## fileReadLines()
+
+```cpp
+bool fileReadLines(
+    const char *filename,
+    FileReadLineCallback callback,
+    void *userData = nullptr
+);
 ```
 
----
-## Read file line by line
-```cpp
-std::vector<std::string> lines;
+Example:
 
-if (_SD_CARD->fileReadLines("/logs/data.txt", lines)) {
-    for (const std::string &line : lines)
-        { Serial.println(line.c_str()); }
+```cpp
+bool callback(
+    const char *line,
+    void *userData
+) {
+    Serial.println(line);
+    return true;
 }
 ```
 
 ---
-## Write file
-Create or overwrite a file.
-```cpp
-if (_SD_CARD->fileWrite("/logs/data.txt", "Hello world"))
-    { Serial.println("File written"); }
-```
-Parent directories are automatically created.
 
----
-## Append in existing file
+# Text Writing
+
+## fileWrite()
+
 ```cpp
-if (_SD_CARD->fileAppend("/logs/data.txt", "New line"))
-    { Serial.println("Data appended"); }
+bool fileWrite(
+    const char *filename,
+    const char *message,
+    bool addNewLine = false
+);
 ```
 
----
-## Write or append
-* Create file if it does not exist
-* Append data if file already exists
+## fileAppend()
+
 ```cpp
-if (_SD_CARD->fileWriteOrAppend("/logs/data.txt", "Hello"))
-    { Serial.println("Written or appended"); }
+bool fileAppend(
+    const char *filename,
+    const char *message,
+    bool addNewLine = false
+);
 ```
 
----
-## Copy file
-```cpp
-if (_SD_CARD->fileCopy("/logs/data.txt", "/backup/data.txt"))
-    { Serial.println("File copied"); }
-```
+## fileWriteOrAppend()
 
-Parent directories are automatically created.
-
----
-## Erase file content
-File stays existing but becomes empty.
 ```cpp
-if (_SD_CARD->fileErase("/logs/data.txt"))
-    { Serial.println("File erased"); }
+bool fileWriteOrAppend(
+    const char *filename,
+    const char *message,
+    bool addNewLine = false
+);
 ```
 
 ---
-## Rename or move file
+
+# Binary Writing
+
+## fileWrite()
+
 ```cpp
-if (_SD_CARD->fileRename("/logs/data.txt", "/backup/data.txt"))
-    { Serial.println("File renamed or moved"); }
+bool fileWrite(
+    const char *filename,
+    const uint8_t *buffer,
+    size_t length
+);
 ```
-Parent directories are automatically created.
 
----
-## Delete file
+## fileAppend()
+
 ```cpp
-if (_SD_CARD->fileDelete("/logs/data.txt"))
-    { Serial.println("File deleted"); }
+bool fileAppend(
+    const char *filename,
+    const uint8_t *buffer,
+    size_t length
+);
+```
+
+## fileWriteOrAppend()
+
+```cpp
+bool fileWriteOrAppend(
+    const char *filename,
+    const uint8_t *buffer,
+    size_t length
+);
+```
+
+These methods are ideal for binary data and embedded null bytes.
+
+---
+
+# File Management
+
+## fileCopy()
+
+```cpp
+bool fileCopy(
+    const char *fromFilename,
+    const char *toFilename
+);
+```
+
+## fileRename()
+
+```cpp
+bool fileRename(
+    const char *fromFilename,
+    const char *toFilename
+);
+```
+
+## fileDelete()
+
+```cpp
+bool fileDelete(const char *filename);
+```
+
+## fileErase()
+
+```cpp
+bool fileErase(const char *filename);
 ```
 
 ---
-# Notes
-* All paths are automatically normalized.
-* Missing leading `/` is automatically added.
-* Most methods safely return `false` if SD card is not initialized.
-* Written messages automatically add a newline (`\n`).
+
+# Callbacks
+
+## FileReadCallback
+
+```cpp
+bool callback(
+    const uint8_t *buffer,
+    size_t length,
+    void *userData
+);
+```
+
+## FileReadLineCallback
+
+```cpp
+bool callback(
+    const char *line,
+    void *userData
+);
+```
+
+## DirListCallback
+
+```cpp
+bool callback(
+    const char *path,
+    size_t size,
+    bool isDirectory,
+    void *userData
+);
+```
+
+Returning false stops the current operation.
 
 ---
-# Example
+
+# Constants
+
+```cpp
+SDCard::MAX_RECURSIVE_DEPTH
+SDCard::MAX_PATH_LENGTH
+SDCard::MAX_LINE_LENGTH
+SDCard::FILE_BUFFER_SIZE
+```
+
+Default values:
+
+- MAX_RECURSIVE_DEPTH = 16
+- MAX_PATH_LENGTH = 256
+- MAX_LINE_LENGTH = 512
+- FILE_BUFFER_SIZE = 512
+
+---
+
+# Path Normalization
+
+Examples:
+
+logs/data.txt
+
+becomes
+
+/logs/data.txt
+
+and
+
+//logs///data.txt
+
+becomes
+
+/logs/data.txt
+
+---
+
+# Return Values
+
+Unless otherwise specified:
+
+- true = success
+- false = failure
+
+---
+
+# Migration from 1.x
+
+Version 2.0.0 removes:
+
+- std::string
+- std::vector
+- std::map
+- std::function
+
+and replaces them with:
+
+- const char *
+- callbacks
+- userData
+- fixed-size buffers
+
+---
+
+# Complete Example
+
 ```cpp
 #include <Arduino.h>
 #include <SPI.h>
@@ -232,21 +467,22 @@ if (_SD_CARD->fileDelete("/logs/data.txt"))
 
 SDCard sd;
 
+bool lineCallback(const char *line, void *userData) {
+    Serial.println(line);
+    return true;
+}
+
 void setup() {
     Serial.begin(115200);
 
     SPI.begin();
 
-    if (!sd.initialize(SPI, 5)) {
-        Serial.println("SD initialization failed");
+    if (!sd.initialize(SPI, 5))
         return;
-    }
 
-    sd.fileWriteOrAppend("/logs/boot.txt", "ESP32 started");
+    sd.fileWrite("/logs/boot.txt", "ESP32 started", true);
 
-    std::string result;
-    if (sd.fileRead("/logs/boot.txt", result))
-        { Serial.println(result.c_str()); }
+    sd.fileReadLines("/logs/boot.txt", lineCallback);
 }
 
 void loop() {
@@ -254,10 +490,7 @@ void loop() {
 ```
 
 ---
+
 # License
-This project is licensed under the GNU GPL v3 or later.
-See:
-```text
-LICENSE
-```
-for full license information.
+
+GPL v3 or later.

@@ -21,22 +21,32 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef _SD_CARD_
-#define _SD_CARD_
-
-#include <Arduino.h>
-#include <map>
+#pragma once
 #include <SD.h>
-#include <vector>
 
 class SDCard {
     private:
         bool _INITIALIZED = false;
         fs::SDFS _SD = fs::SDFS(SD);
-        std::string _normalizePath(std::string path);
-        std::string _joinPath(const std::string &dirname, const char *name);
-        bool _ensureParentDirs(const std::string &path);
+        bool _normalizePath(const char *input, char *output, size_t outputSize);
+        bool _ensureParentDirs(const char *path);
+        bool _dirRemoveRecursive(const char *dirname, int depth);
     public:
+        /**
+         * @brief library limits and buffer sizes
+         */
+        static constexpr int MAX_RECURSIVE_DEPTH = 16;
+        static constexpr size_t MAX_PATH_LENGTH = 256;
+        static constexpr size_t MAX_LINE_LENGTH = 512;
+        static constexpr size_t FILE_BUFFER_SIZE = 512;
+
+        /**
+         * @brief callback types
+         */
+        typedef bool (*FileReadCallback)(const uint8_t *buffer, size_t length, void *userData);
+        typedef bool (*FileReadLineCallback)(const char *line, void *userData);
+        typedef bool (*DirListCallback)(const char *path, size_t size, bool isDirectory, void *userData);
+
         /**
          * @brief constructor
          */
@@ -64,142 +74,182 @@ class SDCard {
         inline bool isInitialized() const { return this->_INITIALIZED; }
 
         /**
-         * @brief get informations about SD card
+         * @brief get SD card informations
          * @param type [out] SD card type
-         * @param size [out] SD card size
-         * @param totalBytes [out] total bytes available
-         * @param usedBytes [out] used bytes
+         * @param size [out] SD card size in bytes
+         * @param totalBytes [out] total filesystem size in bytes
+         * @param usedBytes [out] used filesystem size in bytes
          * @return true if card detected, otherwise false
          */
         bool cardInfos(uint8_t &type, uint64_t &size, uint64_t &totalBytes, uint64_t &usedBytes);
 
         /**
-         * @brief initialise class, SPI must already be began
-         * @param spi SPI class instance
+         * @brief initialize SD card
+         * @param spi initialized SPI instance
          * @param cs chip select pin
-         * @return true if initialised, otherwise false
+         * @return true if initialized, otherwise false
          */
         bool initialize(SPIClass &spi, int cs);
 
         /**
-         * @brief get a list of files and/or directories
-         * @param dirname (default: "/") absolute path of the directory
-         * @param maxLevel (default: 0) maximum sub-directories depth
-         * @param includeDirectories (default: false) include directories in result
-         * @return map<absolute path, file size>
+         * @brief list files and/or directories using a callback
+         * @param dirname directory to explore
+         * @param maxLevel maximum sub-directory depth
+         * @param includeDirectories include directories in callback results
+         * @param callback called for each file or directory, return false to stop listing
+         * @param userData optional user context passed to callback
+         * @return true if listed, otherwise false
          */
-        std::map<std::string, size_t> dirList(std::string dirname = "/", int maxLevel = 0, bool includeDirectories = false);
+        bool dirList(const char *dirname, int maxLevel, bool includeDirectories, DirListCallback callback, void *userData = nullptr);
 
         /**
          * @brief check if directory exists
          * @param dirname absolute directory path
          * @return true if exists, otherwise false
          */
-        bool dirExists(std::string dirname);
+        bool dirExists(const char *dirname);
 
         /**
-         * @brief create a new directory and missing parent directories
+         * @brief create a directory and missing parent directories
          * @param dirname directory to create
-         * @return true if created, otherwise false
+         * @return true if created or already exists, otherwise false
+         * @note Missing parent directories are created automatically
          */
-        bool dirCreate(std::string dirname);
+        bool dirCreate(const char *dirname);
 
         /**
          * @brief remove an empty directory
          * @param dirname directory to remove
-         * @return true if deleted, otherwise false
+         * @return true if removed or does not exist, otherwise false
          */
-        bool dirRemove(std::string dirname);
+        bool dirRemove(const char *dirname);
 
         /**
          * @brief remove a directory recursively
          * @param dirname directory to remove
-         * @return true if deleted, otherwise false
+         * @return true if removed, otherwise false
+         * @note Root directory (/) cannot be removed
          */
-        bool dirRemoveRecursive(std::string dirname);
+        inline bool dirRemoveRecursive(const char *dirname) { return this->_dirRemoveRecursive(dirname, 0); }
 
         /**
          * @brief check if file exists
          * @param filename absolute file path
          * @return true if exists, otherwise false
          */
-        bool fileExists(std::string filename);
+        bool fileExists(const char *filename);
 
         /**
          * @brief get file size
          * @param filename absolute file path
          * @return file size in bytes, otherwise 0
          */
-        size_t fileSize(std::string filename);
+        size_t fileSize(const char *filename);
 
         /**
-         * @brief read a file
+         * @brief read a file by chunks
          * @param filename file to read
-         * @param result [out] file content
+         * @param callback called for each read chunk, return false to stop reading
+         * @param userData optional user context passed to callback
          * @return true if read, otherwise false
          */
-        bool fileRead(std::string filename, std::string &result);
+        bool fileRead(const char *filename, FileReadCallback callback, void *userData = nullptr);
 
         /**
          * @brief read a file line by line
          * @param filename file to read
-         * @param lines [out] file lines
+         * @param callback called for each line, return false to stop reading
+         * @param userData optional user context passed to callback
          * @return true if read, otherwise false
          */
-        bool fileReadLines(std::string filename, std::vector<std::string> &lines);
+        bool fileReadLines(const char *filename, FileReadLineCallback callback, void *userData = nullptr);
 
         /**
-         * @brief create or overwrite a file
+         * @brief create or overwrite a text file
          * @param filename file to write
-         * @param message message to write
+         * @param message null-terminated message to write
+         * @param addNewLine add a newline character at the end of message
          * @return true if written, otherwise false
          */
-        bool fileWrite(std::string filename, std::string message);
+        bool fileWrite(const char *filename, const char *message, bool addNewLine = false);
 
         /**
-         * @brief append message in existing file
+         * @brief append text to an existing file
          * @param filename file to append
-         * @param message message to append
+         * @param message null-terminated message to append
+         * @param addNewLine add a newline character at the end of message
          * @return true if appended, otherwise false
          */
-        bool fileAppend(std::string filename, std::string message);
+        bool fileAppend(const char *filename, const char *message, bool addNewLine = false);
 
         /**
-         * @brief create and write in new file or append in existing file
+         * @brief create and write text in new file or append text in existing file
          * @param filename file to write or append
-         * @param message message to write
+         * @param message null-terminated message to write or append
+         * @param addNewLine add a newline character at the end of message
          * @return true if created/written or appended, otherwise false
          */
-        bool fileWriteOrAppend(std::string filename, std::string message);
+        bool fileWriteOrAppend(const char *filename, const char *message, bool addNewLine = false);
 
         /**
-         * @brief copy file
+         * @brief write raw data to a file
+         * @param filename file to write
+         * @param buffer data buffer to write
+         * @param length number of bytes to write
+         * @return true if written, otherwise false
+         * @note Ideal for binary data or text containing null bytes (`\0`)
+         */
+        bool fileWrite(const char *filename, const uint8_t *buffer, size_t length);
+
+        /**
+         * @brief append raw data to an existing file
+         * @param filename file to append
+         * @param buffer data buffer to append
+         * @param length number of bytes to append
+         * @return true if appended, otherwise false
+         * @note Ideal for binary data or text containing null bytes (`\0`)
+         */
+        bool fileAppend(const char *filename, const uint8_t *buffer, size_t length);
+
+        /**
+         * @brief create and write raw data in new file or append raw data in existing file
+         * @param filename file to write or append
+         * @param buffer data buffer
+         * @param length number of bytes to write
+         * @return true if created/written or appended, otherwise false
+         * @note Ideal for binary data or text containing null bytes (`\0`)
+         */
+        bool fileWriteOrAppend(const char *filename, const uint8_t *buffer, size_t length);
+
+        /**
+         * @brief copy a file
          * @param fromFilename source file
          * @param toFilename destination file
          * @return true if copied, otherwise false
+         * @note Missing parent directories are created automatically
          */
-        bool fileCopy(std::string fromFilename, std::string toFilename);
+        bool fileCopy(const char *fromFilename, const char *toFilename);
 
         /**
-         * @brief clear all datas in file without deleting it
+         * @brief clear all data in a file without deleting it
          * @param filename existing file to erase
          * @return true if erased, otherwise false
          */
-        bool fileErase(std::string filename);
+        bool fileErase(const char *filename);
 
         /**
-         * @brief rename or move file
+         * @brief rename or move a file
          * @param fromFilename existing file
          * @param toFilename new file path
          * @return true if renamed, otherwise false
+         * @note Missing parent directories are created automatically
          */
-        bool fileRename(std::string fromFilename, std::string toFilename);
+        bool fileRename(const char *fromFilename, const char *toFilename);
 
         /**
-         * @brief delete file
-         * @param filename absolute file path
-         * @return true if deleted, otherwise false
+         * @brief delete a file
+         * @param filename file to delete
+         * @return true if deleted or does not exist, otherwise false
          */
-        bool fileDelete(std::string filename);
+        bool fileDelete(const char *filename);
 };
-#endif

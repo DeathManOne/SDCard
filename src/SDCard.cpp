@@ -21,7 +21,7 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "../include/SDCard.h"
+#include "SDCard.h"
 
 SDCard::~SDCard() {
     if (this->_INITIALIZED)
@@ -40,42 +40,60 @@ bool SDCard::cardInfos(uint8_t &type, uint64_t &size, uint64_t &totalBytes, uint
     return type != CARD_NONE;
 }
 
-std::string SDCard::_normalizePath(std::string path) {
-    if (path.empty())
-        { return "/"; }
-    if (path[0] != '/')
-        { path.insert(0, "/"); }
+bool SDCard::_normalizePath(const char *input, char *output, size_t outputSize) {
+    if (!input || !output || outputSize < 2)
+        { return false; }
+    size_t out = 0;
+    bool lastWasSlash = false;
 
-    for (size_t i = 0; i + 1 < path.size();) {
-        if (path[i] == '/' && path[i + 1] == '/')
-            { path.erase(i, 1); }
-        else { ++i; }
+    if (input[0] != '/') {
+        output[out++] = '/';
+        lastWasSlash = true;
     }
 
-    while (path.size() > 1 && path.back() == '/')
-        { path.pop_back(); }
-    return path;
+    for (size_t i = 0; input[i] != '\0'; ++i) {
+        char c = input[i];
+        if (c == '/') {
+            if (lastWasSlash)
+                { continue; }
+            lastWasSlash = true;
+        } else { lastWasSlash = false; }
+        if (out + 1 >= outputSize)
+            { return false; }
+        output[out++] = c;
+    }
+
+    while (out > 1 && output[out - 1] == '/')
+        { --out; }
+    output[out] = '\0';
+    return true;
 }
 
-std::string SDCard::_joinPath(const std::string &dirname, const char *name) {
-    if (dirname == "/")
-        { return "/" + std::string(name); }
-    return dirname + "/" + std::string(name);
-}
-
-bool SDCard::_ensureParentDirs(const std::string &path) {
-    if (path.empty())
+bool SDCard::_ensureParentDirs(const char *path) {
+    if (!path)
         { return false; }
-    std::string normalized = this->_normalizePath(path);
-    size_t pos = 1;
+    char normalized[MAX_PATH_LENGTH];
 
-    while ((pos = normalized.find('/', pos)) != std::string::npos) {
-        std::string dir = normalized.substr(0, pos);
-        if (!dir.empty() && !this->_SD.exists(dir.c_str())) {
-            if (!this->_SD.mkdir(dir.c_str()))
+    if (!this->_normalizePath(path, normalized, sizeof(normalized)))
+        { return false; }
+    size_t len = strlen(normalized);
+
+    if (len == 0)
+        { return false; }
+    char dir[MAX_PATH_LENGTH];
+
+    for (size_t i = 1; i < len; ++i) {
+        if (normalized[i] != '/')
+            { continue; }
+        if (i >= sizeof(dir))
+            { return false; }
+        memcpy(dir, normalized, i);
+        dir[i] = '\0';
+
+        if (!this->_SD.exists(dir)) {
+            if (!this->_SD.mkdir(dir))
                 { return false; }
         }
-        ++pos;
     }
     return true;
 }
@@ -85,38 +103,4 @@ bool SDCard::initialize(SPIClass &spi, int cs) {
         { return true; }
     this->_INITIALIZED = this->_SD.begin(cs, spi);
     return this->_INITIALIZED;
-}
-
-std::map<std::string, size_t> SDCard::dirList(std::string dirname, int maxLevel, bool includeDirectories) {
-    if (!this->isInitialized())
-        { return {}; }
-    dirname = this->_normalizePath(dirname);
-
-    std::map<std::string, size_t> tmp = {};
-    File dirOrFile = this->_SD.open(dirname.c_str());
-
-    if (!dirOrFile) { return tmp; }
-    if (!dirOrFile.isDirectory()) {
-        dirOrFile.close();
-        return tmp;
-    }
-
-    File file = dirOrFile.openNextFile();
-    while (file) {
-        std::string path = this->_joinPath(dirname, file.name());
-        if (file.isDirectory()) {
-            if (includeDirectories)
-                { tmp.insert({path, 0}); }
-            if (maxLevel > 0) {
-                std::map<std::string, size_t> subDir =
-                    this->dirList(path, maxLevel - 1, includeDirectories);
-                for (const auto& dir : subDir)
-                    { tmp.insert({dir.first, dir.second}); }
-            }
-        } else { tmp.insert({path, file.size()}); }
-        file.close();
-        file = dirOrFile.openNextFile();
-    }
-    dirOrFile.close();
-    return tmp;
 }
