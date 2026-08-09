@@ -1,5 +1,5 @@
 /*
- * files_write_basic.cpp
+ * src/files_write_basic.cpp
  *
  * Copyright (c) 2026 DeathManOne
  * https://github.com/DeathManOne
@@ -24,87 +24,62 @@
 #include "SDCard.h"
 
 bool SDCard::fileWrite(const char *filename, const char *message, bool addNewLine) {
-    if (!this->isInitialized())
-        { return false; }
-    if (!filename || !message)
-        { return false; }
+    if (!this->isInitialized()) { return false; }
+    if (!filename || !message)  { return false; }
+
     char path[MAX_PATH_LENGTH];
+    if (!this->_normalizePath(filename, path, sizeof(path))) { return false; }
+    if (!this->_ensureParentDirs(path))                      { return false; }
 
-    if (!this->_normalizePath(filename, path, sizeof(path)))
-        { return false; }
-    if (!this->_ensureParentDirs(path))
-        { return false; }
-    if (this->_SD.exists(path) && !this->_SD.remove(path))
-        { return false; }
     File file = this->_SD.open(path, FILE_WRITE, true);
-
     if (!file || file.isDirectory()) {
         if (file) { file.close(); }
         return false;
     }
 
     size_t messageLength = strlen(message);
-    size_t written = file.write(
-        reinterpret_cast<const uint8_t *>(message),
-        messageLength
-    );
+    size_t written       = file.write(reinterpret_cast<const uint8_t *>(message), messageLength);
+    if (addNewLine) { written += file.write('\n'); }
 
-    if (addNewLine)
-        { written += file.write('\n'); }
     file.close();
-
     return written == messageLength + (addNewLine ? 1 : 0);
 }
 
 bool SDCard::fileAppend(const char *filename, const char *message, bool addNewLine) {
-    if (!this->isInitialized())
-        { return false; }
-    if (!filename || !message)
-        { return false; }
+    if (!this->isInitialized()) { return false; }
+    if (!filename || !message)  { return false; }
+
     char path[MAX_PATH_LENGTH];
+    if (!this->_normalizePath(filename, path, sizeof(path))) { return false; }
+    if (!this->_ensureParentDirs(path))                      { return false; }
+    if (!this->_SD.exists(path))                             { return false; }
 
-    if (!this->_normalizePath(filename, path, sizeof(path)))
-        { return false; }
-    if (!this->_ensureParentDirs(path))
-        { return false; }
-    if (!this->_SD.exists(path))
-        { return false; }
     File file = this->_SD.open(path, FILE_APPEND, false);
-
     if (!file || file.isDirectory()) {
-        if (file)  { file.close(); }
+        if (file) { file.close(); }
         return false;
     }
 
     size_t messageLength = strlen(message);
-    size_t written = file.write(
-        reinterpret_cast<const uint8_t *>(message),
-        messageLength
-    );
+    size_t written       = file.write(reinterpret_cast<const uint8_t *>(message), messageLength);
+    if (addNewLine) { written += file.write('\n'); }
 
-    if (addNewLine)
-        { written += file.write('\n'); }
     file.close();
-
     return written == messageLength + (addNewLine ? 1 : 0);
 }
 
 bool SDCard::fileWriteOrAppend(const char *filename, const char *message, bool addNewLine) {
-    if (!this->isInitialized())
-        { return false; }
-    if (!filename || !message)
-        { return false; }
+    if (!this->isInitialized()) { return false; }
+    if (!filename || !message)  { return false; }
+
     char path[MAX_PATH_LENGTH];
+    if (!this->_normalizePath(filename, path, sizeof(path))) { return false; }
+    if (!this->_ensureParentDirs(path))                      { return false; }
 
-    if (!this->_normalizePath(filename, path, sizeof(path)))
-        { return false; }
-    if (!this->_ensureParentDirs(path))
-        { return false; }
     File file;
-
     if (this->_SD.exists(path))
-        { file = this->_SD.open(path, FILE_APPEND, false); }
-    else { file = this->_SD.open(path, FILE_WRITE, true); }
+        { file  = this->_SD.open(path, FILE_APPEND, false); }
+    else { file = this->_SD.open(path, FILE_WRITE,  true); }
 
     if (!file || file.isDirectory()) {
         if (file) { file.close(); }
@@ -112,14 +87,9 @@ bool SDCard::fileWriteOrAppend(const char *filename, const char *message, bool a
     }
 
     size_t messageLength = strlen(message);
-    size_t written = file.write(
-        reinterpret_cast<const uint8_t *>(message),
-        messageLength
-    );
+    size_t written       = file.write(reinterpret_cast<const uint8_t *>(message), messageLength);
+    if (addNewLine) { written += file.write('\n'); }
 
-    if (addNewLine)
-        { written += file.write('\n'); }
     file.close();
-
     return written == messageLength + (addNewLine ? 1 : 0);
 }

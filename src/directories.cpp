@@ -1,5 +1,5 @@
 /*
- * directories.cpp
+ * src/directories.cpp
  *
  * Copyright (c) 2026 DeathManOne
  * https://github.com/DeathManOne
@@ -24,20 +24,16 @@
 #include "SDCard.h"
 
 bool SDCard::_dirRemoveRecursive(const char *dirname, int depth) {
-    if (!this->isInitialized())
-        { return false; }
-    if (!dirname)
-        { return false; }
-    if (depth >= MAX_RECURSIVE_DEPTH)
-        { return false; }
+    if (!this->isInitialized())       { return false; }
+    if (!dirname)                     { return false; }
+    if (depth > MAX_RECURSIVE_DEPTH) { return false; }
+
     char path[MAX_PATH_LENGTH];
 
-    if (!this->_normalizePath(dirname, path, sizeof(path)))
-        { return false; }
-    if (strcmp(path, "/") == 0)
-        { return false; }
-    File dir = this->_SD.open(path);
+    if (!this->_normalizePath(dirname, path, sizeof(path))) { return false; }
+    if (strcmp(path, "/") == 0)                             { return false; }
 
+    File dir = this->_SD.open(path);
     if (!dir || !dir.isDirectory()) {
         if (dir) { dir.close(); }
         return false;
@@ -49,7 +45,7 @@ bool SDCard::_dirRemoveRecursive(const char *dirname, int depth) {
         int written;
 
         if (strcmp(path, "/") == 0)
-            { written = snprintf(childPath, sizeof(childPath), "/%s", file.name()); }
+            { written  = snprintf(childPath, sizeof(childPath), "/%s",         file.name()); }
         else { written = snprintf(childPath, sizeof(childPath), "%s/%s", path, file.name()); }
 
         if (written < 0 || static_cast<size_t>(written) >= sizeof(childPath)) {
@@ -58,12 +54,14 @@ bool SDCard::_dirRemoveRecursive(const char *dirname, int depth) {
             return false;
         }
 
+        const bool isDirectory = file.isDirectory();
+        file.close();
+
         bool ok;
-        if (file.isDirectory())
-            { ok = this->_dirRemoveRecursive(childPath, depth + 1); }
+        if (isDirectory)
+            { ok  = this->_dirRemoveRecursive(childPath, depth + 1); }
         else { ok = this->_SD.remove(childPath); }
 
-        file.close();
         if (!ok) {
             dir.close();
             return false;
@@ -74,19 +72,18 @@ bool SDCard::_dirRemoveRecursive(const char *dirname, int depth) {
     return this->_SD.rmdir(path);
 }
 
-bool SDCard::dirList(const char *dirname, int maxLevel, bool includeDirectories, DirListCallback callback, void *userData) {
-    if (!this->isInitialized())
-        { return false; }
-    if (!dirname || !callback)
-        { return false; }
-    if (maxLevel < 0 || maxLevel > MAX_RECURSIVE_DEPTH)
-        { return false; }
+bool SDCard::_dirList(const char *dirname, int maxLevel, bool includeDirectories,
+    DirListCallback callback, void *userData, bool &stopped
+) {
+    if (stopped)                                        { return true; }
+    if (!this->isInitialized())                         { return false; }
+    if (!dirname || !callback)                          { return false; }
+    if (maxLevel < 0 || maxLevel > MAX_RECURSIVE_DEPTH) { return false; }
+
     char path[MAX_PATH_LENGTH];
+    if (!this->_normalizePath(dirname, path, sizeof(path))) { return false; }
 
-    if (!this->_normalizePath(dirname, path, sizeof(path)))
-        { return false; }
     File dir = this->_SD.open(path);
-
     if (!dir || !dir.isDirectory()) {
         if (dir) { dir.close(); }
         return false;
@@ -98,7 +95,7 @@ bool SDCard::dirList(const char *dirname, int maxLevel, bool includeDirectories,
         int written;
 
         if (strcmp(path, "/") == 0)
-            { written = snprintf(childPath, sizeof(childPath), "/%s", file.name()); }
+            { written  = snprintf(childPath, sizeof(childPath), "/%s",         file.name()); }
         else { written = snprintf(childPath, sizeof(childPath), "%s/%s", path, file.name()); }
 
         if (written < 0 || static_cast<size_t>(written) >= sizeof(childPath)) {
@@ -108,9 +105,11 @@ bool SDCard::dirList(const char *dirname, int maxLevel, bool includeDirectories,
         }
 
         bool isDirectory = file.isDirectory();
-        size_t size = isDirectory ? 0 : file.size();
+        size_t size      = isDirectory ? 0 : file.size();
+    
         if (!isDirectory || includeDirectories) {
             if (!callback(childPath, size, isDirectory, userData)) {
+                stopped = true;
                 file.close();
                 dir.close();
                 return true;
@@ -119,9 +118,13 @@ bool SDCard::dirList(const char *dirname, int maxLevel, bool includeDirectories,
 
         if (isDirectory && maxLevel > 0) {
             file.close();
-            if (!this->dirList(childPath, maxLevel - 1, includeDirectories, callback, userData)) {
+            if (!this->_dirList(childPath, maxLevel - 1, includeDirectories, callback, userData, stopped)) {
                 dir.close();
                 return false;
+            }
+            if (stopped) {
+                dir.close();
+                return true;
             }
         } else { file.close(); }
         file = dir.openNextFile();
@@ -130,56 +133,49 @@ bool SDCard::dirList(const char *dirname, int maxLevel, bool includeDirectories,
     return true;
 }
 
+bool SDCard::dirList(const char *dirname, int maxLevel, bool includeDirectories, DirListCallback callback, void *userData) {
+    bool stopped = false;
+    return this->_dirList(dirname, maxLevel, includeDirectories, callback, userData, stopped);
+}
+
 bool SDCard::dirExists(const char *dirname) {
-    if (!this->isInitialized())
-        { return false; }
-    if (!dirname)
-        { return false; }
+    if (!this->isInitialized()) { return false; }
+    if (!dirname)               { return false; }
+
     char path[MAX_PATH_LENGTH];
+    if (!this->_normalizePath(dirname, path, sizeof(path))) { return false; }
 
-    if (!this->_normalizePath(dirname, path, sizeof(path)))
-        { return false; }
-    File file = this->_SD.open(path);
+    File file   = this->_SD.open(path);
+    if (!file) { return false; }
 
-    if (!file)
-        { return false; }
     bool result = file.isDirectory();
     file.close();
     return result;
 }
 
 bool SDCard::dirCreate(const char *dirname) {
-    if (!this->isInitialized())
-        { return false; }
-    if (!dirname)
-        { return false; }
+    if (!this->isInitialized()) { return false; }
+    if (!dirname)               { return false; }
+
     char path[MAX_PATH_LENGTH];
+    if (!this->_normalizePath(dirname, path, sizeof(path))) { return false; }
+    if (this->_SD.exists(path))                             { return this->dirExists(path); }
 
-    if (!this->_normalizePath(dirname, path, sizeof(path)))
-        { return false; }
-    if (this->_SD.exists(path))
-        { return this->dirExists(path); }
     char parentPath[MAX_PATH_LENGTH];
+    if (snprintf(parentPath, sizeof(parentPath), "%s/", path) >= sizeof(parentPath)) { return false; }
+    if (!this->_ensureParentDirs(parentPath))                                        { return false; }
 
-    if (snprintf(parentPath, sizeof(parentPath), "%s/", path) >= sizeof(parentPath))
-        { return false; }
-    if (!this->_ensureParentDirs(parentPath))
-        { return false; }
     return this->_SD.mkdir(path);
 }
 
 bool SDCard::dirRemove(const char *dirname) {
-    if (!this->isInitialized())
-        { return false; }
-    if (!dirname)
-        { return false; }
-    char path[MAX_PATH_LENGTH];
+    if (!this->isInitialized()) { return false; }
+    if (!dirname)               { return false; }
 
-    if (!this->_normalizePath(dirname, path, sizeof(path)))
-        { return false; }
-    if (strcmp(path, "/") == 0)
-        { return false; }
-    if (!this->_SD.exists(path))
-        { return true; }
+    char path[MAX_PATH_LENGTH];
+    if (!this->_normalizePath(dirname, path, sizeof(path))) { return false; }
+    if (strcmp(path, "/") == 0)                             { return false; }
+    if (!this->_SD.exists(path))                            { return true; }
+
     return this->_SD.rmdir(path);
 }

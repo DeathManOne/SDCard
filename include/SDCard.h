@@ -1,5 +1,5 @@
 /*
- * SDCard.h
+ * include/SDCard.h
  *
  * Copyright (c) 2026 DeathManOne
  * https://github.com/DeathManOne
@@ -24,27 +24,30 @@
 #pragma once
 #include <SD.h>
 
+/**
+ * @brief Provides SD card and filesystem operations for ESP32.
+ */
 class SDCard {
-    private:
-        bool _INITIALIZED = false;
-        fs::SDFS _SD = fs::SDFS(SD);
-        bool _normalizePath(const char *input, char *output, size_t outputSize);
-        bool _ensureParentDirs(const char *path);
-        bool _dirRemoveRecursive(const char *dirname, int depth);
     public:
-        /**
-         * @brief library limits and buffer sizes
-         */
+        /** Maximum recursion depth for directory operations. */
         static constexpr int MAX_RECURSIVE_DEPTH = 16;
+
+        /** Maximum path length, including the null terminator. */
         static constexpr size_t MAX_PATH_LENGTH = 256;
+
+        /** Maximum line length, including the null terminator. */
         static constexpr size_t MAX_LINE_LENGTH = 512;
+
+        /** Buffer size used for chunked file reading. */
         static constexpr size_t FILE_BUFFER_SIZE = 512;
 
-        /**
-         * @brief callback types
-         */
+        /** Callback invoked for each binary chunk read from a file. */
         typedef bool (*FileReadCallback)(const uint8_t *buffer, size_t length, void *userData);
+
+        /** Callback invoked for each line read from a text file. */
         typedef bool (*FileReadLineCallback)(const char *line, void *userData);
+
+        /** Callback invoked for each entry found during directory listing. */
         typedef bool (*DirListCallback)(const char *path, size_t size, bool isDirectory, void *userData);
 
         /**
@@ -71,7 +74,8 @@ class SDCard {
          * @brief check if SD card is initialized
          * @return true if initialized, otherwise false
          */
-        inline bool isInitialized() const { return this->_INITIALIZED; }
+        inline bool isInitialized() const
+            { return this->_INITIALIZED; }
 
         /**
          * @brief get SD card informations
@@ -100,7 +104,8 @@ class SDCard {
          * @param userData optional user context passed to callback
          * @return true if listed, otherwise false
          */
-        bool dirList(const char *dirname, int maxLevel, bool includeDirectories, DirListCallback callback, void *userData = nullptr);
+        bool dirList(const char *dirname, int maxLevel, bool includeDirectories,
+            DirListCallback callback, void *userData = nullptr);
 
         /**
          * @brief check if directory exists
@@ -130,7 +135,8 @@ class SDCard {
          * @return true if removed, otherwise false
          * @note Root directory (/) cannot be removed
          */
-        inline bool dirRemoveRecursive(const char *dirname) { return this->_dirRemoveRecursive(dirname, 0); }
+        inline bool dirRemoveRecursive(const char *dirname)
+            { return this->_dirRemoveRecursive(dirname, 0); }
 
         /**
          * @brief check if file exists
@@ -222,6 +228,27 @@ class SDCard {
         bool fileWriteOrAppend(const char *filename, const uint8_t *buffer, size_t length);
 
         /**
+         * @brief Opens a file for continuous writing, replacing existing content.
+         * @param filename File to create or replace.
+         * @return true if the file was successfully opened, otherwise false.
+         * @note Only one continuous write session can be open at a time.
+         */
+        bool fileWriteOpen(const char *filename);
+
+        /**
+         * @brief Writes a raw data chunk to the currently open file.
+         * @param buffer Data buffer to write.
+         * @param length Number of bytes to write.
+         * @return true if the complete buffer was successfully written, otherwise false.
+         */
+        bool fileWriteChunk(const uint8_t *buffer, size_t length);
+
+        /**
+         * @brief Flushes and closes the current continuous write session.
+         */
+        void fileWriteClose();
+
+        /**
          * @brief copy a file
          * @param fromFilename source file
          * @param toFilename destination file
@@ -252,4 +279,13 @@ class SDCard {
          * @return true if deleted or does not exist, otherwise false
          */
         bool fileDelete(const char *filename);
+    private:
+        bool _INITIALIZED = false;
+        fs::SDFS _SD = fs::SDFS(SD);
+        File _WRITE_FILE;
+        bool _normalizePath(const char *input, char *output, size_t outputSize);
+        bool _ensureParentDirs(const char *path);
+        bool _dirRemoveRecursive(const char *dirname, int depth);
+        bool _dirList(const char *dirname, int maxLevel, bool includeDirectories,
+            DirListCallback callback, void *userData, bool &stopped);
 };

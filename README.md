@@ -1,10 +1,10 @@
 # SDCard for ESP32
 
-## Complete Documentation (v2.0.0)
+## Complete Documentation (v2.1.0)
 
 This library provides complete SD card management for ESP32 using SPI with a focus on:
 - Zero STL in public API
-- No dynamic memory allocation
+- No explicit dynamic allocation in the library code
 - Fixed-size buffers
 - Callback-based reading
 - Automatic parent directory creation
@@ -23,14 +23,15 @@ This library provides complete SD card management for ESP32 using SPI with a foc
 8. File Reading
 9. Text Writing
 10. Binary Writing
-11. File Management
-12. Callbacks
-13. Constants
-14. Path Normalization
-15. Return Values
-16. Migration from 1.x
-17. Complete Example
-18. License
+11. Continuous Binary Writing
+12. File Management
+13. Callbacks
+14. Constants
+15. Path Normalization
+16. Return Values
+17. Migration from 1.x
+18. Complete Example
+19. License
 
 ---
 
@@ -50,11 +51,12 @@ Unlike many filesystem wrappers, version 2.0.0 removes STL containers from the p
 - Recursive directory deletion
 - Text file reading and writing
 - Binary file reading and writing
+- Continuous binary writing with a persistent file handle
 - File copy, rename and delete
 - Automatic parent directory creation
 - Callback-based streaming
 - Fixed-size buffers
-- No heap allocations in normal operation
+- No explicit heap allocation in the library code
 
 ---
 
@@ -320,6 +322,64 @@ bool fileWriteOrAppend(
 ```
 
 These methods are ideal for binary data and embedded null bytes.
+
+---
+
+# Continuous Binary Writing
+
+Continuous writing keeps the target file open across multiple writes. It is intended for large downloads or generated files and avoids repeatedly opening and closing the file.
+
+## fileWriteOpen()
+
+Creates or replaces a file and starts a continuous write session.
+
+```cpp
+bool fileWriteOpen(const char *filename);
+```
+
+Only one continuous write session can be open at a time.
+
+## fileWriteChunk()
+
+Writes one binary block to the currently open file.
+
+```cpp
+bool fileWriteChunk(
+    const uint8_t *buffer,
+    size_t length
+);
+```
+
+The method returns `true` only when the complete block was written.
+
+## fileWriteClose()
+
+Flushes buffered data and closes the current continuous write session.
+
+```cpp
+void fileWriteClose();
+```
+
+Example:
+
+```cpp
+const uint8_t first[]  = {0x01, 0x02};
+const uint8_t second[] = {0x03, 0x04};
+
+if (sd.fileWriteOpen("/downloads/data.bin")) {
+    const bool written =
+        sd.fileWriteChunk(first, sizeof(first)) &&
+        sd.fileWriteChunk(second, sizeof(second));
+
+    sd.fileWriteClose();
+
+    if (!written) {
+        sd.fileDelete("/downloads/data.bin");
+    }
+}
+```
+
+`fileWriteClose()` must be called on both success and failure paths.
 
 ---
 
